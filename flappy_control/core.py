@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
-import math
 import random
 from typing import Callable
 
@@ -13,17 +12,31 @@ SCREEN_HEIGHT = 600
 
 @dataclass
 class PlantParams:
-    gravity: float = 18.0
-    flap_impulse: float = 9.5
+    # SI defaults: meters, seconds, kilograms, and newtons.
+    gravity: float = 9.81
+    bird_mass: float = 0.030
+    # Each flap is modeled as an impulse applied to momentum, in N*s.
+    flap_impulse: float = 0.095
     dt: float = 1.0 / 30.0
-    drag: float = 1.2
+    drag: float = 0.0
+    pixels_per_meter: float = 120.0
     y_min: float = 0.0
-    y_max: float = SCREEN_HEIGHT
-    v_min: float = -16.0
-    v_max: float = 18.0
-    bird_x: float = 70.0
-    bird_width: int = 40
-    bird_height: int = 30
+    y_max: float | None = None
+    v_min: float = -4.5
+    v_max: float = 6.0
+    bird_x: float | None = None
+    bird_width: float | None = None
+    bird_height: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.y_max is None:
+            self.y_max = SCREEN_HEIGHT / self.pixels_per_meter
+        if self.bird_x is None:
+            self.bird_x = 70.0 / self.pixels_per_meter
+        if self.bird_width is None:
+            self.bird_width = 40.0 / self.pixels_per_meter
+        if self.bird_height is None:
+            self.bird_height = 30.0 / self.pixels_per_meter
 
 
 @dataclass
@@ -123,15 +136,30 @@ class ExperimentResult:
 
 @dataclass
 class SimulationConfig:
-    screen_width: int = SCREEN_WIDTH
-    screen_height: int = SCREEN_HEIGHT
-    pipe_gap: float = 190.0
-    pipe_width: float = 70.0
-    pipe_spacing: float = 240.0
-    pipe_speed: float = 120.0
-    score_zone_x: float = 70.0
-    pipe_min_y: float = 110.0
-    pipe_max_y: float = 490.0
+    world_width: float
+    world_height: float
+    pipe_gap: float
+    pipe_width: float
+    pipe_spacing: float
+    pipe_speed: float
+    score_zone_x: float
+    pipe_min_y: float
+    pipe_max_y: float
+
+    @classmethod
+    def from_plant(cls, plant: PlantParams) -> "SimulationConfig":
+        ppm = plant.pixels_per_meter
+        return cls(
+            world_width=SCREEN_WIDTH / ppm,
+            world_height=SCREEN_HEIGHT / ppm,
+            pipe_gap=200.0 / ppm,
+            pipe_width=70.0 / ppm,
+            pipe_spacing=300.0 / ppm,
+            pipe_speed=120.0 / ppm,
+            score_zone_x=70.0 / ppm,
+            pipe_min_y=200.0 / ppm,
+            pipe_max_y=400.0 / ppm,
+        )
 
 
 class FlappySimulation:
@@ -144,7 +172,7 @@ class FlappySimulation:
         seed: int = 7,
     ) -> None:
         self.plant = plant or PlantParams()
-        self.config = config or SimulationConfig()
+        self.config = config or SimulationConfig.from_plant(self.plant)
         self.random = random.Random(seed)
         self.seed = seed
         self.reset()
@@ -157,9 +185,9 @@ class FlappySimulation:
         pipes_enabled: bool = True,
         target_y: float | None = None,
     ) -> None:
-        y = initial_y if initial_y is not None else self.config.screen_height / 2.0
+        y = initial_y if initial_y is not None else self.config.world_height / 2.0
         self.state = BirdState(time=0.0, y=y, vy=initial_vy, ay=0.0, alive=True)
-        self.target_y = target_y if target_y is not None else self.config.screen_height / 2.0
+        self.target_y = target_y if target_y is not None else self.config.world_height / 2.0
         self.pipes_enabled = pipes_enabled
         self.score = 0
         self.last_crash_reason = ""
@@ -167,7 +195,7 @@ class FlappySimulation:
         self.pipes: list[PipeState] = []
         self.random.seed(self.seed)
         if pipes_enabled:
-            self._spawn_pipe(self.config.screen_width + 100)
+            self._spawn_pipe(self.config.world_width + self.pixels_to_world_x(100.0))
 
     def observe(self) -> Observation:
         next_pipe = self.next_pipe()
@@ -195,10 +223,11 @@ class FlappySimulation:
         flap = bool(command.flap)
         self.last_flap = flap
 
-        acceleration = self.plant.gravity - self.plant.drag * self.state.vy
         if flap:
-            acceleration -= self.plant.flap_impulse / max(self.plant.dt, 1e-9)
+            impulse_scale = max(0.0, float(command.effort) if command.effort else 1.0)
+            self.state.vy -= (self.plant.flap_impulse * impulse_scale) / max(self.plant.bird_mass, 1e-9)
 
+        acceleration = self.plant.gravity - self.plant.drag * self.state.vy
         self.state.ay = acceleration
         self.state.vy += acceleration * self.plant.dt
         self.state.vy = max(self.plant.v_min, min(self.state.vy, self.plant.v_max))
@@ -231,7 +260,7 @@ class FlappySimulation:
         gap_y = self.random.uniform(self.config.pipe_min_y, self.config.pipe_max_y)
         self.pipes.append(
             PipeState(
-                x=x if x is not None else self.config.screen_width + 40,
+                x=x if x is not None else self.config.world_width + self.pixels_to_world_x(40.0),
                 gap_y=gap_y,
                 gap_height=self.config.pipe_gap,
                 width=self.config.pipe_width,
@@ -245,7 +274,7 @@ class FlappySimulation:
                 pipe.scored = True
                 self.score += 1
         self.pipes = [pipe for pipe in self.pipes if pipe.x + pipe.width > 0]
-        if not self.pipes or self.pipes[-1].x < self.config.screen_width - self.config.pipe_spacing:
+        if not self.pipes or self.pipes[-1].x < self.config.world_width - self.config.pipe_spacing:
             self._spawn_pipe()
 
     def _check_pipe_collisions(self) -> None:
@@ -276,6 +305,22 @@ class FlappySimulation:
             self.state.y = self.plant.y_max - self.plant.bird_height
             self.state.alive = False
             self.last_crash_reason = "ground"
+
+    def pixels_to_world_x(self, pixels: float) -> float:
+        return pixels / self.plant.pixels_per_meter
+
+    def pixels_to_world_y(self, pixels: float) -> float:
+        return pixels / self.plant.pixels_per_meter
+
+    def world_to_pixels_x(self, meters: float) -> float:
+        return meters * self.plant.pixels_per_meter
+
+    def world_to_pixels_y(self, meters: float) -> float:
+        return meters * self.plant.pixels_per_meter
+
+    @property
+    def center_y(self) -> float:
+        return self.config.world_height / 2.0
 
     def run_experiment(
         self,

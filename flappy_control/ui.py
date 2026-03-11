@@ -32,6 +32,7 @@ WINDOW_WIDTH = 1360
 WINDOW_HEIGHT = 860
 MIN_WIDTH = 1120
 MIN_HEIGHT = 760
+MANUAL_FLAP_COOLDOWN = 0.10
 
 LAB_STAGES = [
     ("Observe open loop", "Watch gravity, drag, and one flap change the bird state."),
@@ -161,7 +162,7 @@ class ControlTheoryApp:
     def _handle_manual_key(self, key: int) -> None:
         pygame = self.pygame
         if key == pygame.K_SPACE and self.manual_cooldown <= 0.0:
-            self.manual_cooldown = 0.14
+            self.manual_cooldown = MANUAL_FLAP_COOLDOWN
             self.manual_pending_flap = True
         elif key == pygame.K_r:
             self._start_mode(MANUAL)
@@ -229,7 +230,8 @@ class ControlTheoryApp:
                 return
             flap = self.manual_pending_flap
             self.manual_pending_flap = False
-            self.sim.step(ControlCommand(flap=flap, effort=1.0 if flap else 0.0, label="manual"))
+            effort = 1.0 if flap else 0.0
+            self.sim.step(ControlCommand(flap=flap, effort=effort, label="manual"))
             return
 
     def _start_mode(self, mode: str) -> None:
@@ -245,7 +247,7 @@ class ControlTheoryApp:
             self.status = "Main menu. Use 1-4 to move from gameplay into experiments and controllers."
             return
         if mode == MANUAL:
-            self.sim.reset(pipes_enabled=True, target_y=SCREEN_HEIGHT / 2)
+            self.sim.reset(pipes_enabled=True, target_y=self.sim.center_y)
             self.status = "Manual mode. Space flaps, R restarts, Esc returns to the menu."
             return
         if mode == PLANT_LAB:
@@ -275,8 +277,8 @@ class ControlTheoryApp:
         spec = ExperimentSpec(
             name="Impulse experiment",
             duration=6.0,
-            initial_y=SCREEN_HEIGHT / 2,
-            target_y=SCREEN_HEIGHT / 2,
+            initial_y=self.sim.center_y,
+            target_y=self.sim.center_y,
             pipes_enabled=False,
             input_profile="single_flap",
         )
@@ -346,7 +348,7 @@ class ControlTheoryApp:
     def _run_closed_loop_lab(self) -> None:
         controller = self.controller
         controller.reset()
-        target = SCREEN_HEIGHT / 2 - 20
+        target = self.sim.center_y - self.sim.pixels_to_world_y(20.0)
 
         def command_fn(observation: Observation, dt: float) -> ControlCommand:
             observation.target_y = target
@@ -355,7 +357,7 @@ class ControlTheoryApp:
         spec = ExperimentSpec(
             name=f"{controller.name} altitude hold",
             duration=10.0,
-            initial_y=SCREEN_HEIGHT / 2 + 100,
+            initial_y=self.sim.center_y + self.sim.pixels_to_world_y(100.0),
             target_y=target,
             pipes_enabled=False,
             input_profile=controller.name.lower(),
@@ -384,17 +386,17 @@ class ControlTheoryApp:
     def _run_game_challenge(self) -> None:
         controller = self.controller
         controller.reset()
-        self.sim.reset(pipes_enabled=True, target_y=SCREEN_HEIGHT / 2)
+        self.sim.reset(pipes_enabled=True, target_y=self.sim.center_y)
 
         def command_fn(observation: Observation, dt: float) -> ControlCommand:
-            observation.target_y = observation.next_pipe_gap_y if observation.next_pipe_gap_y is not None else SCREEN_HEIGHT / 2
+            observation.target_y = observation.next_pipe_gap_y if observation.next_pipe_gap_y is not None else self.sim.center_y
             return controller.update(observation, dt)
 
         spec = ExperimentSpec(
             name=f"{controller.name} game challenge",
             duration=18.0,
-            initial_y=SCREEN_HEIGHT / 2,
-            target_y=SCREEN_HEIGHT / 2,
+            initial_y=self.sim.center_y,
+            target_y=self.sim.center_y,
             pipes_enabled=True,
             input_profile=f"{controller.name.lower()}_pipes",
         )
@@ -406,7 +408,7 @@ class ControlTheoryApp:
                 ("Bird altitude", self._series(self.result.samples, "y"), PALETTE["ink"]),
                 (
                     "Gap center",
-                    [(float(sample["time"]), float(sample.get("next_pipe_gap_y") or SCREEN_HEIGHT / 2)) for sample in self.result.samples],
+                    [(float(sample["time"]), float(sample.get("next_pipe_gap_y") or self.sim.center_y)) for sample in self.result.samples],
                     PALETTE["accent_2"],
                 ),
                 ("Control effort", self._series(self.result.samples, "control_effort", scale=120.0, offset=120.0), PALETTE["accent"]),
@@ -503,9 +505,10 @@ class ControlTheoryApp:
         pygame = self.pygame
         base_y = self._base_y()
         target_y = self._target_for_render()
-        self._draw_target_line(surface, target_y)
+        target_y_px = self._py(target_y)
+        self._draw_target_line(surface, target_y_px)
         target_label = self.tiny_font.render("target", True, (192, 107, 64))
-        surface.blit(target_label, (12, max(8, int(target_y) - 18)))
+        surface.blit(target_label, (12, max(8, int(target_y_px) - 18)))
 
         for pipe in self.sim.pipes:
             self._draw_pipe(surface, pipe.x, pipe.gap_y, pipe.gap_height, base_y)
@@ -515,7 +518,7 @@ class ControlTheoryApp:
             max_time = float(self.result.samples[-1]["time"]) if self.result.samples else 1.0
             for sample in self.result.samples:
                 trace_x = 16 + (float(sample["time"]) / max(max_time, 1e-9)) * (SCREEN_WIDTH - 32)
-                trace_y = float(sample["y"])
+                trace_y = self._py(float(sample["y"]))
                 trace.append((trace_x, trace_y))
             if len(trace) > 1:
                 pygame.draw.lines(surface, PALETTE["ink"], False, trace, 2)
@@ -737,17 +740,18 @@ class ControlTheoryApp:
         pygame = self.pygame
         pipe_sprite = self.assets["pipe_green"]
         pipe_width = self.assets["pipe_width"]
-        gap_top = gap_y - gap_height / 2.0
-        gap_bottom = gap_y + gap_height / 2.0
+        gap_top = self._py(gap_y - gap_height / 2.0)
+        gap_bottom = self._py(gap_y + gap_height / 2.0)
         top_height = max(12, int(gap_top))
         bottom_height = max(12, int(base_y - gap_bottom))
+        x_px = self._px(x)
 
         top_pipe = pygame.transform.smoothscale(pipe_sprite, (pipe_width, top_height))
         top_pipe = pygame.transform.flip(top_pipe, False, True)
         bottom_pipe = pygame.transform.smoothscale(pipe_sprite, (pipe_width, bottom_height))
 
-        surface.blit(top_pipe, (int(x), 0))
-        surface.blit(bottom_pipe, (int(x), int(gap_bottom)))
+        surface.blit(top_pipe, (x_px, 0))
+        surface.blit(bottom_pipe, (x_px, int(gap_bottom)))
 
     def _draw_base(self, surface, time_value: float) -> None:
         base = self.assets["base"]
@@ -763,9 +767,9 @@ class ControlTheoryApp:
         frame_index = int((flap_phase * 8.0) % len(self.assets["bird_frames"]))
         sprite = self.assets["bird_frames"][frame_index]
         rotation_source = self.sim.state.vy if self.mode == MANUAL else self._bird_velocity_hint()
-        angle = max(-28.0, min(35.0, -rotation_source * 2.6))
+        angle = max(-28.0, min(35.0, -rotation_source * 12.0))
         rotated = pygame.transform.rotozoom(sprite, angle, 1.0)
-        rect = rotated.get_rect(center=(x + self.sim.plant.bird_width / 2, y + self.sim.plant.bird_height / 2))
+        rect = rotated.get_rect(center=(self._px(x + self.sim.plant.bird_width / 2), self._py(y + self.sim.plant.bird_height / 2)))
         surface.blit(rotated, rect.topleft)
 
     def _draw_score(self, surface) -> None:
@@ -797,6 +801,12 @@ class ControlTheoryApp:
 
     def _base_y(self) -> int:
         return SCREEN_HEIGHT - self.assets["base"].get_height()
+
+    def _px(self, meters: float) -> int:
+        return int(round(self.sim.world_to_pixels_x(meters)))
+
+    def _py(self, meters: float) -> int:
+        return int(round(self.sim.world_to_pixels_y(meters)))
 
     def _score_value(self) -> int:
         if self.mode == MANUAL:
@@ -862,7 +872,8 @@ class ControlTheoryApp:
         analytic = analytic_transfer_function(params)
         fit = self.result.model.fit_quality if self.result else 0.0
         lines = [
-            f"Plant: gravity={params.gravity:.2f}, flap={params.flap_impulse:.2f}, drag={params.drag:.2f}, dt={params.dt:.4f}",
+            f"Plant: g={params.gravity:.2f} m/s^2, mass={params.bird_mass:.3f} kg, flap impulse={params.flap_impulse:.3f} N*s",
+            f"Scale: {params.pixels_per_meter:.1f} px/m, pipe speed={self.sim.config.pipe_speed:.2f} m/s, dt={params.dt:.4f} s",
             f"Analytic model: {analytic.pretty()}",
             f"Identified fit quality: {fit:.3f}",
         ]
@@ -917,11 +928,11 @@ class ControlTheoryApp:
 
     def _target_for_render(self) -> float:
         if self.mode == PLANT_LAB and self.result:
-            return float(self.result.spec.target_y or SCREEN_HEIGHT / 2)
+            return float(self.result.spec.target_y or self.sim.center_y)
         if self.result and self.result.samples:
             sample = self.result.samples[-1]
-            return float(sample.get("next_pipe_gap_y") or sample.get("target_y") or SCREEN_HEIGHT / 2)
-        return SCREEN_HEIGHT / 2
+            return float(sample.get("next_pipe_gap_y") or sample.get("target_y") or self.sim.center_y)
+        return self.sim.center_y
 
     def _series(
         self,

@@ -14,7 +14,7 @@ def derive_experiment_result(
     detrended_y = _detrend_signal(samples, "y")
     impulse_response = _estimate_impulse_response(detrended_y)
     step_response = integrate_response(impulse_response, plant.dt)
-    metrics = compute_time_metrics(samples, spec.target_y)
+    metrics = compute_time_metrics(samples, spec.target_y, plant)
     model = identify_transfer_function(samples, plant)
     notes = build_lab_notes(spec, plant, model)
     return ExperimentResult(
@@ -31,6 +31,7 @@ def derive_experiment_result(
 def compute_time_metrics(
     samples: list[dict[str, float | bool | str | None]],
     target_y: float | None,
+    plant: PlantParams,
 ) -> dict[str, float | str | None]:
     if not samples:
         return {}
@@ -47,7 +48,7 @@ def compute_time_metrics(
     overshoot = max(0.0, peak_error - abs(initial_error))
 
     settling_time = None
-    band = 12.0
+    band = max(0.05, plant.bird_height * 0.5)
     for index in range(len(ys)):
         tail = ys[index:]
         if all(abs(value - target) <= band for value in tail):
@@ -93,7 +94,7 @@ def identify_transfer_function(
     outputs: list[float] = []
     for previous, current in zip(samples[:-1], samples[1:]):
         vy = float(previous["vy"])
-        flap = 1.0 if previous.get("flap") else 0.0
+        flap = float(previous.get("control_effort", 0.0)) if previous.get("flap") else 0.0
         measured_acc = (float(current["vy"]) - vy) / max(dt, 1e-9)
         phi_rows.append((vy, flap, 1.0))
         outputs.append(measured_acc)
@@ -108,7 +109,7 @@ def identify_transfer_function(
 
     description = (
         "Continuous approximation from sampled bird dynamics: "
-        "y'' + a y' = -b u + bias"
+        "y'' + a y' = -b u + bias with flap input treated as sampled impulse strength"
     )
     return TransferFunctionModel(
         numerator=[-gain],
@@ -122,12 +123,12 @@ def identify_transfer_function(
 
 def analytic_transfer_function(plant: PlantParams) -> TransferFunctionModel:
     return TransferFunctionModel(
-        numerator=[-plant.flap_impulse / max(plant.dt, 1e-9)],
+        numerator=[-(plant.flap_impulse / max(plant.bird_mass * plant.dt, 1e-9))],
         denominator=[1.0, plant.drag, 0.0],
         delay=0.0,
         fit_quality=1.0,
         source_method="analytic",
-        description="Continuous approximation derived from the simulation update law.",
+        description="Continuous approximation derived from the impulsive simulation update law.",
     )
 
 
@@ -240,7 +241,8 @@ def build_lab_notes(
     analytic = analytic_transfer_function(plant)
     return [
         f"Experiment: {spec.name}",
-        "Model the bird vertical dynamics as y'' + a y' = -b u + g.",
+        f"Bird mass = {plant.bird_mass:.3f} kg, gravity = {plant.gravity:.2f} m/s^2, flap impulse = {plant.flap_impulse:.3f} N*s.",
+        "Between flaps: y'' + a y' = g. At each flap: v(t+) = v(t-) - J/m.",
         f"Analytic approximation: {analytic.pretty()}",
         f"Identified model fit: {model.pretty()} with quality={model.fit_quality:.3f}",
         "Impulse response comes from one flap event; step response is the time integral of the impulse response.",

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import math
 from typing import Iterable
 
 from .core import ControlCommand, Observation
@@ -27,8 +26,8 @@ class BaseController:
 @dataclass
 class OnOffController(BaseController):
     name: str = "On-Off"
-    deadband: float = 16.0
-    hysteresis: float = 6.0
+    deadband: float = 0.13
+    hysteresis: float = 0.05
     min_interval: float = 0.12
     _latched: bool = field(default=False, init=False)
     _time_since_flap: float = field(default=999.0, init=False)
@@ -60,9 +59,9 @@ class OnOffController(BaseController):
 @dataclass
 class PIDController(BaseController):
     name: str = "PID"
-    kp: float = 0.065
-    ki: float = 0.018
-    kd: float = 0.045
+    kp: float = 7.8
+    ki: float = 2.2
+    kd: float = 5.4
     derivative_filter: float = 0.18
     output_min: float = 0.0
     output_max: float = 1.0
@@ -119,7 +118,7 @@ class PIDController(BaseController):
 @dataclass
 class TransferFunctionController(BaseController):
     name: str = "Polynomial"
-    numerator: list[float] = field(default_factory=lambda: [0.22, 0.12])
+    numerator: list[float] = field(default_factory=lambda: [2.8, 1.4])
     denominator: list[float] = field(default_factory=lambda: [1.0, 1.6, 0.7])
     output_min: float = 0.0
     output_max: float = 1.0
