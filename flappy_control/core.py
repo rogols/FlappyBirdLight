@@ -142,6 +142,7 @@ class SimulationConfig:
     pipe_width: float
     pipe_spacing: float
     pipe_speed: float
+    pipe_speed_gain: float
     score_zone_x: float
     pipe_min_y: float
     pipe_max_y: float
@@ -156,6 +157,7 @@ class SimulationConfig:
             pipe_width=70.0 / ppm,
             pipe_spacing=300.0 / ppm,
             pipe_speed=120.0 / ppm,
+            pipe_speed_gain=0.01,
             score_zone_x=70.0 / ppm,
             pipe_min_y=200.0 / ppm,
             pipe_max_y=400.0 / ppm,
@@ -220,19 +222,8 @@ class FlappySimulation:
 
     def step(self, command: ControlCommand | None = None) -> dict[str, float | bool | str | None]:
         command = command or ControlCommand()
-        flap = bool(command.flap)
-        self.last_flap = flap
-
-        if flap:
-            impulse_scale = max(0.0, float(command.effort) if command.effort else 1.0)
-            self.state.vy -= (self.plant.flap_impulse * impulse_scale) / max(self.plant.bird_mass, 1e-9)
-
-        acceleration = self.plant.gravity - self.plant.drag * self.state.vy
-        self.state.ay = acceleration
-        self.state.vy += acceleration * self.plant.dt
-        self.state.vy = max(self.plant.v_min, min(self.state.vy, self.plant.v_max))
-        self.state.y += self.state.vy * self.plant.dt
-        self.state.time += self.plant.dt
+        self._apply_control_command(command)
+        self._advance_bird_state()
 
         if self.pipes_enabled:
             self._update_pipes()
@@ -247,7 +238,7 @@ class FlappySimulation:
             "ay": self.state.ay,
             "target_y": self.target_y,
             "control_effort": float(command.effort),
-            "flap": flap,
+            "flap": self.last_flap,
             "score": self.score,
             "alive": self.state.alive,
             "next_pipe_gap_y": next_pipe.gap_y if next_pipe else None,
@@ -255,6 +246,23 @@ class FlappySimulation:
             "crash_reason": self.last_crash_reason,
             "controller_label": command.label,
         }
+
+    def _apply_control_command(self, command: ControlCommand) -> None:
+        flap = bool(command.flap)
+        self.last_flap = flap
+        if not flap:
+            return
+
+        impulse_scale = max(0.0, float(command.effort) if command.effort else 1.0)
+        self.state.vy -= (self.plant.flap_impulse * impulse_scale) / max(self.plant.bird_mass, 1e-9)
+
+    def _advance_bird_state(self) -> None:
+        acceleration = self.plant.gravity - self.plant.drag * self.state.vy
+        self.state.ay = acceleration
+        self.state.vy += acceleration * self.plant.dt
+        self.state.vy = max(self.plant.v_min, min(self.plant.v_max, self.state.vy))
+        self.state.y += self.state.vy * self.plant.dt
+        self.state.time += self.plant.dt
 
     def _spawn_pipe(self, x: float | None = None) -> None:
         gap_y = self.random.uniform(self.config.pipe_min_y, self.config.pipe_max_y)
@@ -268,8 +276,9 @@ class FlappySimulation:
         )
 
     def _update_pipes(self) -> None:
+        pipe_speed = self.current_pipe_speed()
         for pipe in self.pipes:
-            pipe.x -= self.config.pipe_speed * self.plant.dt
+            pipe.x -= pipe_speed * self.plant.dt
             if not pipe.scored and pipe.x + pipe.width < self.config.score_zone_x:
                 pipe.scored = True
                 self.score += 1
@@ -317,6 +326,9 @@ class FlappySimulation:
 
     def world_to_pixels_y(self, meters: float) -> float:
         return meters * self.plant.pixels_per_meter
+
+    def current_pipe_speed(self) -> float:
+        return self.config.pipe_speed + self.config.pipe_speed_gain * self.state.time
 
     @property
     def center_y(self) -> float:

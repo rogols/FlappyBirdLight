@@ -1,7 +1,7 @@
 import unittest
 
-from flappy_control.controllers import OnOffController, PIDController, TransferFunctionController, continuous_tf_to_discrete
-from flappy_control.core import BirdState, Observation
+from flappy_control.controllers import OnOffController, PIDController, TransferFunctionController, continuous_tf_to_discrete, controller_factory
+from flappy_control.core import BirdState, FlappySimulation, Observation
 
 
 def make_observation(y: float, target: float = 300.0) -> Observation:
@@ -22,7 +22,7 @@ class ControllerTest(unittest.TestCase):
         self.assertTrue(command.flap)
 
     def test_pid_output_is_clamped(self) -> None:
-        controller = PIDController(kp=1.0, ki=0.0, kd=0.0, output_max=0.5)
+        controller = PIDController(k=1.0, ti=0.0, td=0.0, output_max=0.5)
         command = controller.update(make_observation(600.0, 300.0), 1 / 30)
         self.assertLessEqual(command.effort, 0.5)
 
@@ -36,6 +36,20 @@ class ControllerTest(unittest.TestCase):
         command = controller.update(make_observation(340.0, 300.0), 1 / 30)
         self.assertGreaterEqual(command.effort, 0.0)
         self.assertLessEqual(command.effort, 1.0)
+
+    def test_default_controllers_make_progress_in_game(self) -> None:
+        for controller in controller_factory():
+            sim = FlappySimulation(seed=7)
+            sim.reset(pipes_enabled=True, target_y=sim.center_y)
+            controller.reset()
+            for _ in range(900):
+                observation = sim.observe()
+                observation.target_y = observation.next_pipe_gap_y if observation.next_pipe_gap_y is not None else sim.center_y
+                command = controller.update(observation, sim.plant.dt)
+                sim.step(command)
+                if not sim.state.alive:
+                    break
+            self.assertGreaterEqual(sim.score, 1, msg=f"{controller.name} did not pass any pipes")
 
 
 if __name__ == "__main__":

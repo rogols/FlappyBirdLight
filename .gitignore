@@ -1,0 +1,5 @@
+DEVELOPER.md
+high_scores.json
+__pycache__/
+tests/__pycache__/
+*.pyc

@@ -26,8 +26,8 @@ class BaseController:
 @dataclass
 class OnOffController(BaseController):
     name: str = "On-Off"
-    deadband: float = 0.13
-    hysteresis: float = 0.05
+    deadband: float = 0.14
+    hysteresis: float = 0.01
     min_interval: float = 0.12
     _latched: bool = field(default=False, init=False)
     _time_since_flap: float = field(default=999.0, init=False)
@@ -55,18 +55,26 @@ class OnOffController(BaseController):
     def editable_parameters(self) -> list[str]:
         return ["deadband", "hysteresis", "min_interval"]
 
+    def adjust(self, key: str, delta: float) -> None:
+        if key == "deadband":
+            self.deadband = max(0.0, self.deadband + delta)
+        elif key == "hysteresis":
+            self.hysteresis = max(0.0, self.hysteresis + delta)
+        elif key == "min_interval":
+            self.min_interval = max(0.02, self.min_interval + delta)
+
 
 @dataclass
 class PIDController(BaseController):
     name: str = "PID"
-    kp: float = 7.8
-    ki: float = 2.2
-    kd: float = 5.4
-    derivative_filter: float = 0.18
+    k: float = 1.0
+    ti: float = 0.0
+    td: float = 0.0
+    derivative_filter: float = 0.40
     output_min: float = 0.0
     output_max: float = 1.0
     anti_windup: float = 0.5
-    min_interval: float = 0.08
+    min_interval: float = 0.02
     integral: float = field(default=0.0, init=False)
     prev_error: float = field(default=0.0, init=False)
     filtered_derivative: float = field(default=0.0, init=False)
@@ -88,7 +96,9 @@ class PIDController(BaseController):
         self.filtered_derivative = alpha * self.filtered_derivative + (1.0 - alpha) * raw_derivative
 
         proposed_integral = self.integral + error * dt
-        output = self.kp * error + self.ki * proposed_integral + self.kd * self.filtered_derivative
+        integral_term = proposed_integral / self.ti if self.ti > 1e-9 else 0.0
+        derivative_term = self.td * self.filtered_derivative
+        output = self.k * (error + integral_term + derivative_term)
         clamped = max(self.output_min, min(self.output_max, output))
 
         if abs(output - clamped) < 1e-9:
@@ -106,23 +116,37 @@ class PIDController(BaseController):
 
     def editable_parameters(self) -> list[str]:
         return [
-            "kp",
-            "ki",
-            "kd",
+            "k",
+            "ti",
+            "td",
             "derivative_filter",
             "anti_windup",
             "min_interval",
         ]
 
+    def adjust(self, key: str, delta: float) -> None:
+        if key == "k":
+            self.k = max(0.0, self.k + delta)
+        elif key == "ti":
+            self.ti = max(0.0, self.ti + delta)
+        elif key == "td":
+            self.td = max(0.0, self.td + delta)
+        elif key == "derivative_filter":
+            self.derivative_filter = max(0.0, min(1.0, self.derivative_filter + delta))
+        elif key == "anti_windup":
+            self.anti_windup = max(0.0, self.anti_windup + delta)
+        elif key == "min_interval":
+            self.min_interval = max(0.02, self.min_interval + delta)
+
 
 @dataclass
 class TransferFunctionController(BaseController):
     name: str = "Polynomial"
-    numerator: list[float] = field(default_factory=lambda: [2.8, 1.4])
-    denominator: list[float] = field(default_factory=lambda: [1.0, 1.6, 0.7])
+    numerator: list[float] = field(default_factory=lambda: [1.8])
+    denominator: list[float] = field(default_factory=lambda: [1.0])
     output_min: float = 0.0
     output_max: float = 1.0
-    min_interval: float = 0.08
+    min_interval: float = 0.02
     _error_history: list[float] = field(default_factory=list, init=False)
     _output_history: list[float] = field(default_factory=list, init=False)
     _pulse_accumulator: float = field(default=0.0, init=False)

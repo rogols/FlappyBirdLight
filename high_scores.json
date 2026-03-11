@@ -2,45 +2,45 @@
   "player": [
     {
       "name": "Player",
+      "score": 5
+    },
+    {
+      "name": "Spelare",
+      "score": 4
+    },
+    {
+      "name": "Player",
+      "score": 3
+    },
+    {
+      "name": "Player",
       "score": 3
     },
     {
       "name": "Player",
       "score": 2
-    },
-    {
-      "name": "Player",
-      "score": 0
-    },
-    {
-      "name": "Player",
-      "score": 0
-    },
-    {
-      "name": "Player",
-      "score": 0
     }
   ],
   "controller": [
+    {
+      "name": "P\u00e5-av d\u00f6dzon=0.14 hysteres=0.01",
+      "score": 18
+    },
+    {
+      "name": "P\u00e5-av d\u00f6dzon=0.14 hysteres=0.01",
+      "score": 17
+    },
+    {
+      "name": "PID K=1.00 Ti=0.00 Td=0.00",
+      "score": 2
+    },
     {
       "name": "PID kp=1.20 ki=0.00 kd=0.00",
       "score": 1
     },
     {
-      "name": "On-Off db=0.13 h=0.05",
-      "score": 0
-    },
-    {
-      "name": "On-Off db=0.13 h=0.05",
-      "score": 0
-    },
-    {
-      "name": "PID kp=7.80 ki=2.20 kd=5.40",
-      "score": 0
-    },
-    {
-      "name": "PID kp=7.80 ki=0.00 kd=0.00",
-      "score": 0
+      "name": "PID kp=1.20 ki=0.00 kd=0.00",
+      "score": 1
     }
   ]
 }

@@ -18,7 +18,7 @@ class UiStateTest(unittest.TestCase):
         app.selected_parameter = 0
         app.parameter_input = None
         app.status = ""
-        app.sim = SimpleNamespace(score=0)
+        app.sim = SimpleNamespace(score=0, config=SimpleNamespace(pipe_speed_gain=0.01))
         return app
 
     def test_record_score_separates_player_and_controller(self) -> None:
@@ -33,10 +33,10 @@ class UiStateTest(unittest.TestCase):
             app.sim.score = 5
             app._record_score()
 
-            self.assertEqual([(entry.name, entry.score) for entry in app.high_scores["player"]], [("Player", 3)])
+            self.assertEqual([(entry.name, entry.score) for entry in app.high_scores["player"]], [("Spelare", 3)])
             self.assertEqual(len(app.high_scores["controller"]), 1)
             self.assertEqual(app.high_scores["controller"][0].score, 5)
-            self.assertIn("PID kp=", app.high_scores["controller"][0].name)
+            self.assertIn("PID K=", app.high_scores["controller"][0].name)
 
     def test_load_high_scores_enforces_limit_and_sorting(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -71,15 +71,16 @@ class UiStateTest(unittest.TestCase):
             app = self._make_app(Path(temp_dir) / "scores.json")
             app.mode = AUTOMATIC
             app.phase = "ready"
+            app.selected_parameter = 1
             app.parameter_input = "12.5"
             app._prepare_round_state = lambda: None
 
             committed = app._commit_parameter_input()
 
             self.assertTrue(committed)
-            self.assertAlmostEqual(app.controller.kp, 12.5)
+            self.assertAlmostEqual(app.controller.k, 12.5)
             self.assertIsNone(app.parameter_input)
-            self.assertIn("Set PID kp to 12.500", app.status)
+            self.assertIn("Satte PID K till 12.500", app.status)
 
 
 if __name__ == "__main__":

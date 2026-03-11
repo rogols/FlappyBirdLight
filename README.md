@@ -1,97 +1,113 @@
-# Flappy Bird Control Theory Lab
+# Flappy Bird Reglerteorilabb
 
-Flappy Bird Control Theory Lab is a PyGame app that turns Flappy Bird into a controlled-system playground. The bird uses one shared physical plant model in both human play and controller-driven play, so students can compare a person and a controller against the same dynamics, pipe timing, and scoring rules.
+Detta program är ett Flappy Bird-spel för undervisning i ET050G - Reglerteknik vid Mittuniversitetet, utvecklat av Roger Olsson tillsammans med OpenAI GPT-5.4. 
 
-## Purpose
+Du kan spela själv i manuellt läge eller låta en regulator (autopilot) styra fågeln i automatiskt läge. Oavsett vilket läge du väljer används samma fågelmodell, samma gravitation, samma rör och samma poängräkning, så att du rättvist kan jämföra reglulatorimplementationer.
 
-The project is built for control-theory teaching around a concrete process:
-- the bird is the plant
-- a flap is an impulsive input
-- gravity and mass are modeled in SI units
-- the pipe course is the disturbance and tracking environment
+## Syfte
 
-The current shipped app intentionally exposes two runtime views only:
-- `Manual Play`: the user operates the bird.
-- `Automatic Play`: the selected controller operates the bird after the user tunes parameters and starts the run.
+Appen är till för att du som student ska kunna:
+- jämföra manuell styrning med automatisk reglering
+- se hur val av regulatorparametrar påverkar spelet
+- observera hur en och samma process kan styras på olika sätt
 
-Both modes use the same game mechanics and both score by counting passed pipes. At game over, the app shows separate high-score tables for human runs and controller runs. Controller entries include the tuned parameter summary in the recorded name.
+Fågeln är processen. En flaxning är insignal. Regulatorn försöker hålla fågeln på rätt höjd för att passera genom rören.
 
-## Current Scope
+## Spellägen
 
-### In the app
-- Manual gameplay with original-style Flappy Bird visuals from the bundled asset pack.
-- Automatic gameplay with live controller tuning for on-off, PID, and polynomial controllers.
-- Shared score handling across both modes.
-- Persistent high-score storage in `high_scores.json`.
-- Separate player and controller leaderboards.
+### Manuellt spel
+Du styr fågeln själv med tangentbordet.
 
-### In the codebase
-- A reusable physical simulation core in SI units.
-- Controller implementations behind a common interface.
-- Analytics and experiment utilities that support the broader teaching roadmap.
-- Automated tests for simulation and controller behavior.
+### Automatiskt spel
+Du väljer regulator, ställer in parametrar och startar sedan rundan. Regulatorn spelar då spelet åt dig.
 
-## Controls
+## Poäng och topplista
 
-### Global
-- `M`: switch to manual play
-- `A`: switch to automatic play
+- Poäng är antal passerade rörpar innan kollision.
+- Manuella resultat sparas separat från automatiska resultat.
+- För automatiska resultat sparas regulatorns parametrar tillsammans med resultatet.
 
-### Manual Play
-- `Space`: start the round and flap
-- `R`: reset the current round
+## Kontroller
 
-### Automatic Play
-- `1/2/3`: choose controller family
-- `Tab`: cycle the editable controller parameter
-- `+/-`: tune the selected parameter
-- `E`: enter an exact numeric value for the selected parameter
-- `Enter`: start the automatic run with the current settings
-- `R`: reset the current round and controller state
+### Gemensamt
+- `M`: byt till manuellt läge
+- `A`: byt till automatiskt läge
+- `R`: återställ rundan och återgå till Redo
+- `Esc`: återställ rundan och återgå till Redo
 
-## Physics Model
+### Vid numerisk inmatning
+- `0-9`, `-`, `.`: skriv in ett numeriskt värde
+- `Backsteg`: radera senaste tecknet
+- `Enter`: bekräfta värdet
+- `Esc`: avbryt redigeringen
 
-The vertical motion is modeled as:
+### Manuellt spel
+- `Blanksteg`: starta rundan och få fågeln att flaxa
+- `Tab`: välj hastighetsökning
+- `Enter`: skriv in ett exakt värde för hastighetsökningen
 
-```text
-y_dot = v
-v_dot = g - c v
-v(t+) = v(t-) - J / m    at each flap event
-```
+### Automatiskt spel
+- `1/2/3`: välj regulatorfamilj
+- `Tab`: välj parameter
+- `Enter`: skriv in ett exakt numeriskt värde för vald parameter
+- `Blanksteg`: starta rundan med aktuell regulator
 
-Where:
-- `g = 9.81 m/s^2`
-- `m` is bird mass in kilograms
-- `J` is the flap impulse in `N*s`
-- `c` is the linear drag term
+## Sa anvander du appen
 
-This keeps the plant definition independent from whichever controller happens to be driving it.
+### Om du vill spela själv
+1. Starta appen.
+2. Tryck `M` för manuellt läge om det inte redan är valt.
+3. Tryck `Blanksteg` för att starta.
+4. Fortsätt trycka `Blanksteg` för att styra fågeln genom rören.
 
-## Project Structure
-
-- [FlappyBirdLight.py](/mnt/c/Development/FlappyBirdLight/FlappyBirdLight.py): app entrypoint.
-- [flappy_control/core.py](/mnt/c/Development/FlappyBirdLight/flappy_control/core.py): physical plant and gameplay simulation.
-- [flappy_control/controllers.py](/mnt/c/Development/FlappyBirdLight/flappy_control/controllers.py): on-off, PID, and polynomial controllers.
-- [flappy_control/analytics.py](/mnt/c/Development/FlappyBirdLight/flappy_control/analytics.py): analysis helpers retained from the broader teaching roadmap.
-- [flappy_control/ui.py](/mnt/c/Development/FlappyBirdLight/flappy_control/ui.py): two-view PyGame interface, live tuning, and high-score presentation.
-- [tests](/mnt/c/Development/FlappyBirdLight/tests): automated regression coverage.
-- [SDP.md](/mnt/c/Development/FlappyBirdLight/SDP.md): the broader original software development plan for the teaching platform.
+### Om du vill prova automatisk styrning
+1. Tryck `A` för automatiskt läge.
+2. Välj regulator med `1`, `2` eller `3`.
+3. Välj parameter med `Tab`.
+4. Tryck `Enter` för att skriva in ett exakt värde.
+5. Tryck `Blanksteg` för att starta rundan.
+6. Jämför resultatet med topplistan.
 
 ## Installation
 
 ```bash
-python3 -m pip install -r requirements.txt
-python3 FlappyBirdLight.py
+python -m pip install -r requirements.txt
+python FlappyBirdLight.py
 ```
 
-Run tests with:
+## Repostruktur
+
+- `FlappyBirdLight.py`: startpunkt som startar appen.
+- `flappy_control/core.py`: fysikmodell, pipes, kollisionslogik och poangrakning.
+- `flappy_control/controllers.py`: pa-av-, PID- och overforingsfunktionsregulatorer.
+- `flappy_control/ui.py`: PyGame-granssnitt, inmatning, visning och topplistor.
+- `flappy_control/analytics.py`: analys- och modelleringsfunktioner for vidareutveckling och laborationer.
+- `tests/`: automatiserade regressionstester for simulering, regulatorer, analys och UI-tillstand.
+- `flappy-bird-assets/`: spelresurser samt tillhorande dokumentation och licensinformation for assets.
+- `DEVELOPER.md`: utvecklarorienterad guide for underhall och vidareutveckling.
+- `SDP.md`: overgripande produkt- och utvecklingsplan.
+- `CHANGELOG.md`: historik over andringar i projektet.
+
+## For utveckling och verifiering
+
+Om du arbetar i repot och vill verifiera andringar finns automatiserade tester:
 
 ```bash
-python3 -m unittest discover -s tests -v
+python -m unittest discover -s tests -v
 ```
 
-## Repository Notes
+## Lokala filer
 
-- `SDP.md` captures the larger roadmap for a richer control-theory learning platform. The current production UI has been narrowed to the two gameplay views above.
-- High scores are persisted locally in `high_scores.json`.
-- The bundled art lives under [flappy-bird-assets](/mnt/c/Development/FlappyBirdLight/flappy-bird-assets) with its own attribution files.
+- `high_scores.json` skapas lokalt nar appen kor och innehaller topplistor for manuellt och automatiskt spel.
+- `__pycache__/` och `*.pyc` ar cachefiler fran Python-korning och hor inte till den dokumenterade programlogiken.
+
+## Dokumentation i repot
+
+- `README.md` riktar sig till studenter och beskriver hur appen anvands.
+- `SDP.md` beskriver ett bredare projekt- och produktperspektiv kring arbetet.
+
+## Licens
+
+- Kallkoden i repot omfattas av `LICENSE`.
+- Assets i `flappy-bird-assets/` har egen dokumentation och licensinformation i den katalogen.
+
