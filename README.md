@@ -31,6 +31,7 @@ The implementation roadmap for this progression is captured in [SDP.md](SDP.md).
 - Plant Lab with impulse response, integrated step response, model-validation, and Bode views.
 - Controller Lab with on-off, PID, and generic polynomial controllers.
 - Game Challenge mode that tracks the next pipe-gap centerline.
+- Asset-backed visuals using the bundled original-style Flappy Bird backgrounds, bird sprites, pipes, digits, and overlays.
 - CSV and JSON export for experiment logs.
 - Optional PNG plot export when `matplotlib` is available.
 - Deterministic simulation core and automated tests for analytics and controllers.

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+import math
 import os
+from pathlib import Path
 from typing import Sequence
 
 from .analytics import analytic_transfer_function, bode_points, closed_loop_bode
@@ -85,6 +87,10 @@ class ControlTheoryApp:
         self.body_font = pygame.font.SysFont("dejavusansmono", 17)
         self.small_font = pygame.font.SysFont("dejavusansmono", 15)
         self.tiny_font = pygame.font.SysFont("dejavusansmono", 13)
+        self.asset_root = Path(__file__).resolve().parent.parent / "flappy-bird-assets"
+        self.assets = self._load_assets()
+        if self.assets.get("icon") is not None:
+            pygame.display.set_icon(self.assets["icon"])
 
         self.sim = FlappySimulation()
         self.mode = MENU
@@ -437,7 +443,6 @@ class ControlTheoryApp:
     def _draw_world(self, rect: tuple[int, int, int, int]) -> None:
         x, y, width, height = rect
         canvas = self.world_surface
-        canvas.fill(PALETTE["sky"])
         self._draw_canvas_background(canvas)
 
         if self.mode == MENU:
@@ -452,23 +457,20 @@ class ControlTheoryApp:
         self.screen.blit(scaled, inset.topleft)
 
     def _draw_canvas_background(self, surface) -> None:
-        pygame = self.pygame
-        surface.fill(PALETTE["sky"])
-        pygame.draw.rect(surface, PALETTE["sand"], (0, SCREEN_HEIGHT - 44, SCREEN_WIDTH, 44))
-        pygame.draw.circle(surface, (243, 234, 186), (330, 82), 42)
-        for x in (50, 180, 320):
-            pygame.draw.circle(surface, (219, 233, 244), (x, 110), 18)
-            pygame.draw.circle(surface, (219, 233, 244), (x + 18, 100), 22)
-            pygame.draw.circle(surface, (219, 233, 244), (x + 36, 112), 18)
+        background = self.assets["background_day"]
+        if self.mode in (PLANT_LAB, CONTROLLER_LAB):
+            background = self.assets["background_night"]
+        surface.blit(background, (0, 0))
 
     def _draw_menu_canvas(self, surface) -> None:
         pygame = self.pygame
-        pygame.draw.rect(surface, (239, 232, 209), (0, 0, SCREEN_WIDTH, 185))
-        pygame.draw.line(surface, PALETTE["line"], (0, 186), (SCREEN_WIDTH, 186), 2)
-        title = self.title_font.render("Control Theory Flappy Bird", True, PALETTE["ink"])
-        subtitle = self.body_font.render("Play, identify, model, and control the bird plant.", True, PALETTE["muted"])
-        surface.blit(title, (28, 34))
-        surface.blit(subtitle, (30, 78))
+        surface.blit(self.assets["message"], (SCREEN_WIDTH // 2 - self.assets["message"].get_width() // 2, 52))
+        self._draw_bird_sprite(surface, SCREEN_WIDTH // 2 - 20, 186 + self._menu_bird_offset(), flap_phase=0.0)
+
+        title = self.title_font.render("Control Theory Lab", True, PALETTE["ink"])
+        subtitle = self.body_font.render("Play, identify, model, and close the loop.", True, PALETTE["muted"])
+        surface.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 264))
+        surface.blit(subtitle, (SCREEN_WIDTH // 2 - subtitle.get_width() // 2, 306))
 
         cards = [
             ("1", "Manual Play", "Classic Flappy Bird with live plant motion."),
@@ -495,21 +497,18 @@ class ControlTheoryApp:
             PALETTE["ink"],
             self.pygame.Rect(footer.left + 18, footer.top + 14, footer.width - 36, footer.height - 18),
         )
+        self._draw_base(surface, self._world_time())
 
     def _draw_simulation_canvas(self, surface) -> None:
         pygame = self.pygame
+        base_y = self._base_y()
         target_y = self._target_for_render()
-        pygame.draw.line(surface, (192, 107, 64), (0, target_y), (SCREEN_WIDTH, target_y), 2)
+        self._draw_target_line(surface, target_y)
         target_label = self.tiny_font.render("target", True, (192, 107, 64))
         surface.blit(target_label, (12, max(8, int(target_y) - 18)))
 
         for pipe in self.sim.pipes:
-            gap_top = pipe.gap_y - pipe.gap_height / 2.0
-            gap_bottom = pipe.gap_y + pipe.gap_height / 2.0
-            pygame.draw.rect(surface, PALETTE["grass"], (pipe.x, 0, pipe.width, gap_top))
-            pygame.draw.rect(surface, PALETTE["forest"], (pipe.x - 4, gap_top - 10, pipe.width + 8, 10))
-            pygame.draw.rect(surface, PALETTE["grass"], (pipe.x, gap_bottom, pipe.width, SCREEN_HEIGHT - gap_bottom))
-            pygame.draw.rect(surface, PALETTE["forest"], (pipe.x - 4, gap_bottom, pipe.width + 8, 10))
+            self._draw_pipe(surface, pipe.x, pipe.gap_y, pipe.gap_height, base_y)
 
         if self.result and self.mode in (PLANT_LAB, CONTROLLER_LAB, GAME_CHALLENGE):
             trace = []
@@ -522,10 +521,10 @@ class ControlTheoryApp:
                 pygame.draw.lines(surface, PALETTE["ink"], False, trace, 2)
 
         bird_y = self.sim.state.y if self.mode == MANUAL else self._render_bird_y()
-        bird_rect = self.pygame.Rect(self.sim.plant.bird_x, bird_y, self.sim.plant.bird_width, self.sim.plant.bird_height)
-        pygame.draw.rect(surface, PALETTE["ink"], bird_rect, border_radius=8)
-        pygame.draw.circle(surface, (255, 255, 255), (bird_rect.right - 10, bird_rect.top + 11), 4)
-        pygame.draw.circle(surface, PALETTE["accent"], (bird_rect.left + 10, bird_rect.centery), 6)
+        self._draw_bird_sprite(surface, self.sim.plant.bird_x, bird_y, flap_phase=self._world_time())
+
+        self._draw_base(surface, self._world_time())
+        self._draw_score(surface)
 
         badge_rect = self.pygame.Rect(18, 18, 220, 52)
         pygame.draw.rect(surface, (252, 248, 240), badge_rect, border_radius=14)
@@ -539,11 +538,16 @@ class ControlTheoryApp:
             self._draw_world_note(surface, self.controller.name, "Closed-loop altitude hold in the simplified plant environment.")
         elif self.mode == GAME_CHALLENGE:
             self._draw_world_note(surface, self.controller.name, "Closed-loop gap tracking through moving pipe constraints.")
+        if self.mode == MANUAL and not self.sim.state.alive:
+            gameover = self.assets["gameover"]
+            surface.blit(gameover, (SCREEN_WIDTH // 2 - gameover.get_width() // 2, 132))
 
     def _draw_world_note(self, surface, title: str, body: str) -> None:
         pygame = self.pygame
         card = pygame.Rect(18, SCREEN_HEIGHT - 146, SCREEN_WIDTH - 36, 84)
-        pygame.draw.rect(surface, (252, 248, 240), card, border_radius=18)
+        note_surface = pygame.Surface(card.size, pygame.SRCALPHA)
+        pygame.draw.rect(note_surface, (252, 248, 240, 230), note_surface.get_rect(), border_radius=18)
+        surface.blit(note_surface, card.topleft)
         pygame.draw.rect(surface, PALETTE["line"], card, 1, border_radius=18)
         surface.blit(self.heading_font.render(title, True, PALETTE["ink"]), (card.left + 18, card.top + 12))
         self._draw_text_block(surface, body, self.small_font, PALETTE["muted"], self.pygame.Rect(card.left + 18, card.top + 42, card.width - 36, 30))
@@ -670,6 +674,136 @@ class ControlTheoryApp:
         y_label = self.tiny_font.render(f"{min_y:.1f} to {max_y:.1f}", True, PALETTE["muted"])
         surface.blit(x_label, (plot_rect.left, rect.bottom - 24))
         surface.blit(y_label, (plot_rect.right - y_label.get_width(), plot_rect.top - 2))
+
+    def _load_assets(self) -> dict[str, object]:
+        pygame = self.pygame
+        sprite_dir = self.asset_root / "sprites"
+
+        def load_sprite(name: str):
+            return pygame.image.load(str(sprite_dir / name)).convert_alpha()
+
+        background_day = pygame.transform.smoothscale(load_sprite("background-day.png"), (SCREEN_WIDTH, SCREEN_HEIGHT))
+        background_night = pygame.transform.smoothscale(load_sprite("background-night.png"), (SCREEN_WIDTH, SCREEN_HEIGHT))
+
+        base_raw = load_sprite("base.png")
+        base_height = 84
+        base_width = int(base_raw.get_width() * (base_height / base_raw.get_height()))
+        base = pygame.transform.smoothscale(base_raw, (base_width, base_height))
+
+        pipe_raw = load_sprite("pipe-green.png")
+        pipe_red_raw = load_sprite("pipe-red.png")
+        pipe_width = 78
+
+        bird_size = (54, 38)
+        bird_frames = [
+            pygame.transform.smoothscale(load_sprite("yellowbird-upflap.png"), bird_size),
+            pygame.transform.smoothscale(load_sprite("yellowbird-midflap.png"), bird_size),
+            pygame.transform.smoothscale(load_sprite("yellowbird-downflap.png"), bird_size),
+        ]
+
+        icon = pygame.transform.smoothscale(load_sprite("yellowbird-midflap.png"), (32, 32))
+        message = pygame.transform.smoothscale(load_sprite("message.png"), (236, 342))
+        gameover = pygame.transform.smoothscale(load_sprite("gameover.png"), (204, 56))
+
+        digits: dict[str, object] = {}
+        for digit in range(10):
+            surface = load_sprite(f"{digit}.png")
+            scaled = pygame.transform.smoothscale(surface, (int(surface.get_width() * 1.35), int(surface.get_height() * 1.35)))
+            digits[str(digit)] = scaled
+
+        return {
+            "background_day": background_day,
+            "background_night": background_night,
+            "base": base,
+            "pipe_green": pipe_raw,
+            "pipe_red": pipe_red_raw,
+            "pipe_width": pipe_width,
+            "bird_frames": bird_frames,
+            "message": message,
+            "gameover": gameover,
+            "digits": digits,
+            "icon": icon,
+        }
+
+    def _draw_target_line(self, surface, y: float) -> None:
+        dash = 10
+        gap = 6
+        x = 0
+        while x < SCREEN_WIDTH:
+            self.pygame.draw.line(surface, (192, 107, 64), (x, y), (min(SCREEN_WIDTH, x + dash), y), 2)
+            x += dash + gap
+
+    def _draw_pipe(self, surface, x: float, gap_y: float, gap_height: float, base_y: int) -> None:
+        pygame = self.pygame
+        pipe_sprite = self.assets["pipe_green"]
+        pipe_width = self.assets["pipe_width"]
+        gap_top = gap_y - gap_height / 2.0
+        gap_bottom = gap_y + gap_height / 2.0
+        top_height = max(12, int(gap_top))
+        bottom_height = max(12, int(base_y - gap_bottom))
+
+        top_pipe = pygame.transform.smoothscale(pipe_sprite, (pipe_width, top_height))
+        top_pipe = pygame.transform.flip(top_pipe, False, True)
+        bottom_pipe = pygame.transform.smoothscale(pipe_sprite, (pipe_width, bottom_height))
+
+        surface.blit(top_pipe, (int(x), 0))
+        surface.blit(bottom_pipe, (int(x), int(gap_bottom)))
+
+    def _draw_base(self, surface, time_value: float) -> None:
+        base = self.assets["base"]
+        base_y = self._base_y()
+        scroll_speed = 90.0
+        width = base.get_width()
+        offset = int((time_value * scroll_speed) % width)
+        for tile_x in range(-offset, SCREEN_WIDTH + width, width):
+            surface.blit(base, (tile_x, base_y))
+
+    def _draw_bird_sprite(self, surface, x: float, y: float, flap_phase: float) -> None:
+        pygame = self.pygame
+        frame_index = int((flap_phase * 8.0) % len(self.assets["bird_frames"]))
+        sprite = self.assets["bird_frames"][frame_index]
+        rotation_source = self.sim.state.vy if self.mode == MANUAL else self._bird_velocity_hint()
+        angle = max(-28.0, min(35.0, -rotation_source * 2.6))
+        rotated = pygame.transform.rotozoom(sprite, angle, 1.0)
+        rect = rotated.get_rect(center=(x + self.sim.plant.bird_width / 2, y + self.sim.plant.bird_height / 2))
+        surface.blit(rotated, rect.topleft)
+
+    def _draw_score(self, surface) -> None:
+        if self.mode not in (MANUAL, GAME_CHALLENGE):
+            return
+        score = self._score_value()
+        text = str(score)
+        digits = [self.assets["digits"][digit] for digit in text]
+        total_width = sum(digit.get_width() for digit in digits) + max(0, len(digits) - 1) * 2
+        x = SCREEN_WIDTH // 2 - total_width // 2
+        for digit in digits:
+            surface.blit(digit, (x, 24))
+            x += digit.get_width() + 2
+
+    def _world_time(self) -> float:
+        if self.mode == MANUAL:
+            return self.sim.state.time
+        if self.result and self.result.samples:
+            return float(self.result.samples[-1]["time"])
+        return self.pygame.time.get_ticks() / 1000.0
+
+    def _menu_bird_offset(self) -> int:
+        return int(8.0 * math.sin(self.pygame.time.get_ticks() / 250.0))
+
+    def _bird_velocity_hint(self) -> float:
+        if self.result and self.result.samples:
+            return float(self.result.samples[-1].get("vy", 0.0))
+        return self.sim.state.vy
+
+    def _base_y(self) -> int:
+        return SCREEN_HEIGHT - self.assets["base"].get_height()
+
+    def _score_value(self) -> int:
+        if self.mode == MANUAL:
+            return int(self.sim.score)
+        if self.result and self.result.samples:
+            return int(self.result.samples[-1].get("score", 0))
+        return 0
 
     def _draw_text_block(self, surface, text: str, font, color, rect) -> None:
         lines = wrap_text(font, text, rect.width)
