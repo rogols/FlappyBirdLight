@@ -28,19 +28,19 @@
     },
     {
       "name": "P\u00e5-av d\u00f6dzon=0.14 hysteres=0.01",
+      "score": 18
+    },
+    {
+      "name": "P\u00e5-av d\u00f6dzon=0.14 hysteres=0.01",
       "score": 17
     },
     {
-      "name": "PID K=1.00 Ti=0.00 Td=0.00",
-      "score": 2
+      "name": "PID K=2.00 Ti=0.00 Td=0.00",
+      "score": 4
     },
     {
-      "name": "PID kp=1.20 ki=0.00 kd=0.00",
-      "score": 1
-    },
-    {
-      "name": "PID kp=1.20 ki=0.00 kd=0.00",
-      "score": 1
+      "name": "P\u00e5-av d\u00f6dzon=0.14 hysteres=0.01",
+      "score": 4
     }
   ]
 }

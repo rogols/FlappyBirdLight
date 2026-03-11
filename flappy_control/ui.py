@@ -19,7 +19,7 @@ GAME_OVER = "game_over"
 WINDOW_WIDTH = 1360
 WINDOW_HEIGHT = 860
 MIN_WIDTH = 1120
-MIN_HEIGHT = 760
+MIN_HEIGHT = 820
 MANUAL_FLAP_COOLDOWN = 0.10
 HIGH_SCORE_LIMIT = 5
 
@@ -61,11 +61,11 @@ class ControlTheoryApp:
         self.clock = pygame.time.Clock()
         self.world_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
 
-        self.title_font = pygame.font.SysFont("georgia", 34, bold=True)
-        self.heading_font = pygame.font.SysFont("georgia", 24, bold=True)
-        self.body_font = pygame.font.SysFont("dejavusansmono", 17)
-        self.small_font = pygame.font.SysFont("dejavusansmono", 15)
-        self.tiny_font = pygame.font.SysFont("dejavusansmono", 13)
+        self.title_font = pygame.font.SysFont("georgia", 30, bold=True)
+        self.heading_font = pygame.font.SysFont("georgia", 22, bold=True)
+        self.body_font = pygame.font.SysFont("dejavusansmono", 16)
+        self.small_font = pygame.font.SysFont("dejavusansmono", 16)
+        self.tiny_font = pygame.font.SysFont("dejavusansmono", 14)
 
         self.asset_root = Path(__file__).resolve().parent.parent / "flappy-bird-assets"
         self.high_score_path = Path(__file__).resolve().parent.parent / "high_scores.json"
@@ -354,21 +354,21 @@ class ControlTheoryApp:
         inner = sidebar_rect.inflate(-18, -18)
         cursor = inner.top
 
-        header_rect = self.pygame.Rect(inner.left, cursor, inner.width, 96)
+        header_rect = self.pygame.Rect(inner.left, cursor, inner.width, 118)
         self._draw_card(header_rect)
         self.screen.blit(self.title_font.render(self._mode_title(), True, PALETTE["ink"]), (header_rect.left + 18, header_rect.top + 14))
-        self._draw_text_block(self.screen, self.status, self.body_font, PALETTE["muted"], self.pygame.Rect(header_rect.left + 18, header_rect.top + 58, header_rect.width - 36, 42))
+        self._draw_text_block(self.screen, self.status, self.body_font, PALETTE["muted"], self.pygame.Rect(header_rect.left + 18, header_rect.top + 56, header_rect.width - 36, 52))
         cursor = header_rect.bottom + 12
 
-        controls_rect = self.pygame.Rect(inner.left, cursor, inner.width, 104 if self.mode == MANUAL else 132)
+        controls_rect = self.pygame.Rect(inner.left, cursor, inner.width, 112 if self.mode == MANUAL else 124)
         self._draw_text_card(controls_rect, "Kontroller", self._control_lines())
         cursor = controls_rect.bottom + 12
 
-        live_rect = self.pygame.Rect(inner.left, cursor, inner.width, 100)
+        live_rect = self.pygame.Rect(inner.left, cursor, inner.width, 112)
         self._draw_text_card(live_rect, "Live-data", self._live_lines())
         cursor = live_rect.bottom + 12
 
-        config_rect = self.pygame.Rect(inner.left, cursor, inner.width, 120 if self.mode == MANUAL else 150)
+        config_rect = self.pygame.Rect(inner.left, cursor, inner.width, 142 if self.mode == MANUAL else 224)
         if self.mode == AUTOMATIC:
             self._draw_text_card(config_rect, "Regulatorinställning", self._controller_lines())
         else:
