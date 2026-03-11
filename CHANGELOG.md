@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and this project follows a simple unrele
 
 ## [Unreleased]
 
+### Changed
+- Collapsed the runtime UI to two gameplay views only: manual play and automatic play.
+- Updated the sidebar, status flow, and controls around live controller tuning followed by explicit automatic-run start.
+- Aligned `README.md` with the shipped two-view app instead of the earlier four-mode teaching prototype.
+
+### Fixed
+- Game-over restarts now rebuild a fresh simulation state instead of reusing the crashed run.
+- Automatic controller tuning is now blocked while a run is active, so the visible result always matches the configured parameters at launch.
+- The in-world high-score overlay now renders to the correct surface after scaling.
+
 ## [0.2.0] - 2026-03-11
 
 ### Added
